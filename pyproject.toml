@@ -1,0 +1,24 @@
+[tool.briefcase]
+project_name = "MonicoAndroid"
+bundle = "com.jaykk99.monicoandroid"
+version = "2.5"
+url = "https://github.com/jaykk99/monico-android"
+license = "MIT"
+
+[tool.briefcase.app.monicoandroid]
+formal_name = "Monico"
+description = "Monico Android v2.5 - Uncensored AI Terminal"
+icon = "resources/monico"
+source_dir = "."
+requires = [
+    "toga-android",
+    "microdot",
+    "requests",
+]
+
+[tool.briefcase.app.monicoandroid.android]
+supported_devices = ["phone", "tablet"]
+build_gradle_dependencies = [
+    "androidx.appcompat:appcompat:1.6.1",
+    "com.google.android.material:material:1.9.0",
+]

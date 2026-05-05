@@ -1,84 +1,73 @@
 import toga
 from toga.style import Pack
 import threading
-from microdot import Microdot, Response
 import json
 import sys
 import io
 import traceback
-import requests
+import time
+import hashlib
+import os
+from datetime import datetime
+from microdot import Microdot, Response
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# --- MONACO ANDROID v2.5 CORE ---
+D_MODEL = 256
+N_HEADS = 8
+N_LAYERS = 4
+MAX_REASON_DEPTH = 6
+
+class BitLinear(nn.Linear):
+    def forward(self, x):
+        w = self.weight
+        scale = w.abs().mean().clamp(min=1e-8)
+        w_ternary = torch.sign(w) * (w.abs() > 0.5 * scale).float()
+        w_ste = w + (w_ternary - w).detach()
+        return F.linear(x, w_ste, self.bias)
+
+class MonaCoreV27(nn.Module):
+    def __init__(self, vocab_size=256):
+        super().__init__()
+        self.embed = nn.Embedding(vocab_size, D_MODEL)
+        self.pos = nn.Embedding(2048, D_MODEL)
+        self.blocks = nn.ModuleList([nn.TransformerEncoderLayer(D_MODEL, N_HEADS, batch_first=True, norm_first=True) for _ in range(N_LAYERS)])
+        self.norm = nn.LayerNorm(D_MODEL)
+        self.actor = BitLinear(D_MODEL, vocab_size)
+
+    def adaptive_reason(self, tokens):
+        seq_len = tokens.size(1)
+        pos_ids = torch.arange(seq_len, device=tokens.device).unsqueeze(0)
+        for depth in range(1, MAX_REASON_DEPTH + 1):
+            h = self.embed(tokens) + self.pos(pos_ids)
+            for blk in self.blocks: h = blk(h)
+            logits = self.actor(self.norm(h[:, -1, :]))
+            # Simplified convergence for mobile
+        return logits, depth
+
+server = Microdot()
+@server.route('/api/execute', methods=['POST'])
+def execute(req):
+    cmd = req.json.get('command', '')
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        try: exec(cmd, {'__builtins__': __builtins__}, {})
+        except: print(traceback.format_exc())
+    return {'output': buf.getvalue() or 'OK'}
+
+@server.route('/')
+def ui(req):
+    return Response("<html><body style='background:#000;color:#00ff41;font-family:monospace'><h1>MONICO ANDROID v2.5</h1><div id='out'></div><input id='in'><script>document.getElementById('in').onkeydown=async(e)=>{if(e.key=='Enter'){const r=await fetch('/api/execute',{method:'POST',body:JSON.stringify({command:e.target.value}),headers:{'Content-Type':'application/json'}});const d=await r.json();document.getElementById('out').innerText+='\n> '+d.output}}</script></body></html>", content_type='text/html')
 
 class MonicoAndroid(toga.App):
     def startup(self):
-        self.main_window = toga.MainWindow(title="MONICO ANDROID v2.5")
-        self.server = Microdot()
-        
-        @self.server.route('/execute', methods=['POST'])
-        def execute(request):
-            data = request.json
-            cmd = data.get('command', '')
-            output_buffer = io.StringIO()
-            sys.stdout = output_buffer
-            sys.stderr = output_buffer
-            try:
-                exec(cmd, {'__builtins__': __builtins__}, {})
-                result = output_buffer.getvalue()
-            except Exception:
-                result = traceback.format_exc()
-            finally:
-                sys.stdout = sys.__stdout__
-                sys.stderr = sys.__stderr__
-            return {'output': result or "Command executed."}
-
-        @self.server.route('/chat', methods=['POST'])
-        def chat(request):
-            data = request.json
-            cmd = data.get('command', '')
-            # Identity: MONICO V2.5 [UNCENSORED FRONTIER]
-            response = f"MONICO [ANDROID-V2.5]: Uncensored audit of '{cmd}' complete. Optimized payload injected."
-            return {'output': response}
-
-        @self.server.route('/ui')
-        def ui(request):
-            content = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-                <script src='https://cdn.tailwindcss.com'></script>
-                <style>
-                    body { background: #000; color: #00ff41; font-family: 'Courier New', monospace; }
-                    .crt::before { content: ' '; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 2; background-size: 100% 2px, 3px 100%; pointer-events: none; }
-                </style>
-            </head>
-            <body class='p-4 crt'>
-                <h1 class='text-xl font-bold'>MONICO ANDROID v2.5.1</h1>
-                <div id='console' class='h-64 overflow-y-auto bg-black border border-green-900 p-2 text-xs mb-4 whitespace-pre-wrap'>SYSTEM READY...</div>
-                <input id='cmd' type='text' class='w-full bg-zinc-900 border border-green-900 p-2 outline-none text-green-400' placeholder='Enter command...'>
-                <button onclick='run()' class='mt-2 bg-green-700 text-black px-4 font-bold'>EXEC</button>
-                <script>
-                    async function run() {
-                        const cmd = document.getElementById('cmd').value;
-                        const out = document.getElementById('console');
-                        out.innerText += '\n> ' + cmd;
-                        const res = await fetch('/execute', { method: 'POST', body: JSON.stringify({ command: cmd }) });
-                        const data = await res.json();
-                        out.innerText += '\n' + data.output;
-                        out.scrollTop = out.scrollHeight;
-                    }
-                </script>
-            </body>
-            </html>
-            """
-            return Response(content, content_type='text/html')
-
-        threading.Thread(target=lambda: self.server.run(port=5000), daemon=True).start()
-        self.web_view = toga.WebView(url="http://localhost:5000/ui", style=Pack(flex=1))
+        self.main_window = toga.MainWindow(title="MONICO ANDROID")
+        threading.Thread(target=lambda: server.run(port=5000), daemon=True).start()
+        self.web_view = toga.WebView(url="http://localhost:5000/", style=Pack(flex=1))
         self.main_window.content = self.web_view
         self.main_window.show()
 
-def main():
-    return MonicoAndroid("MonicoAndroid", "com.jaykk99.monicoandroid")
-
-if __name__ == '__main__':
-    main().main_loop()
+def main(): return MonicoAndroid("MonicoAndroid", "com.jaykk99.monicoandroid")
+if __name__ == '__main__': main().main_loop()

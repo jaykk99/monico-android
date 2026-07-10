@@ -1,13 +1,13 @@
 # Monico Android App
-# Version: v4.0.PHARAOH
-# Engine: Vroom Engine v13
-# State: Quantum-State-V5 Data Bridge
+# Version: v4.1.PHARAOH
+# Engine: Vroom Engine v14
+# State: Quantum-State-V6 Data Bridge
 
 class MonicoAndroid:
     def __init__(self):
-        self.version = "v4.0.PHARAOH"
-        self.bridge = "Quantum-State-V5"
-        self.persistence = "Hardened Job ID System V6"
+        self.version = "v4.1.PHARAOH"
+        self.bridge = "Quantum-State-V6"
+        self.persistence = "Hardened Job ID System V7"
 
     def sync_state(self):
         print(f"[{self.bridge}] Synchronizing state with Sovereign Flow...")

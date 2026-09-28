@@ -8,12 +8,12 @@ license = "MIT"
 [tool.briefcase.app.monicoandroid]
 formal_name = "Monico"
 description = "Monico Android v2.5 - Uncensored AI Terminal"
-icon = "resources/monico"
 source_dir = "."
 requires = [
     "toga-android",
     "microdot",
     "requests",
+    "psutil",
 ]
 
 [tool.briefcase.app.monicoandroid.android]

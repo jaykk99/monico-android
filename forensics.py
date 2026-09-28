@@ -1,4 +1,3 @@
-import toga
 import os
 import hashlib
 

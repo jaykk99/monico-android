@@ -1,12 +1,6 @@
 import toga
 from toga.style import Pack
 import threading
-import json
-import sys
-import io
-import traceback
-import time
-import os
 import psutil
 from microdot import Microdot, Response
 
@@ -25,7 +19,11 @@ server = Microdot()
 
 @server.route('/api/execute', methods=['POST'])
 def api_execute(req):
-    cmd = req.json.get('command', '')
+    try:
+        body = req.json or {}
+    except Exception:
+        body = {}
+    cmd = body.get('command', '')
     return {'output': engine.execute(cmd)}
 
 @server.route('/api/health')
@@ -73,7 +71,7 @@ def ui(req):
         }
     </script></body></html>
     """
-    return Response(html, content_type='text/html')
+    return Response(html, headers={'Content-Type': 'text/html'})
 
 class MonicoApp(toga.App):
     def startup(self):

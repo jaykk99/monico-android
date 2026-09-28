@@ -14,7 +14,7 @@ source .monico-env/bin/activate
 
 # 3. Install Monico dependencies
 pip install --upgrade pip
-pip install briefcase microdot toga-android requests torch --no-cache-dir
+pip install briefcase microdot toga-android requests psutil torch --no-cache-dir
 
 # 4. Clone and launch
 if [ ! -d "monico-android" ]; then

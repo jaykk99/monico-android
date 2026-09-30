@@ -12,9 +12,11 @@ class ForensicsScanner:
             for f in files[:100]:
                 try:
                     fp = os.path.join(root, f)
-                    h = hashlib.sha256(open(fp, 'rb').read()).hexdigest()
+                    with open(fp, 'rb') as fh:
+                        h = hashlib.sha256(fh.read()).hexdigest()
                     summary.append(f"{fp} | {h[:8]}")
-                except: continue
+                except Exception:
+                    continue
         return "\n".join(summary)
 
 # --- App Integration ---

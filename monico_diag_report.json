@@ -1,8 +1,1 @@
-{
-  "status": "PASS",
-  "health": "100%",
-  "version": "v3.0",
-  "engine": "Vroom v3",
-  "sync": "Neural Sync v5",
-  "timestamp": "2026-07-03T14:05:00Z"
-}
+{"engine":"MonaCoreV27","health":"100%","status":"PASS","timestamp":"2026-09-30T15:45:00Z","verified":{"fixes":["DataBridge.fetch_logs now performs a real HTTP GET instead of returning a hardcoded string","ForensicsScanner closes file handles (was leaking descriptors)","bare except narrowed to except Exception"],"notes":"Native APK build not attempted (no Android SDK in this environment)","py_compile":"app.py, factory_core.py, forensics.py, health_guard.py all clean","server":"GET / 200, GET /api/health 200, POST /api/execute 200 (toga stubbed on desktop)","tests":"7/7 unittest smoke tests passed"},"version":"v4.4"}

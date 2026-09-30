@@ -26,9 +26,11 @@ class DataBridge:
     """
     Server-side 'fetcher' to pull logs proactively from the scraper harvester.
     """
-    def fetch_logs(self, endpoint_url):
-        # In-app API fetcher logic
-        return "RAW_JSON_PACKET"
+    def fetch_logs(self, endpoint_url, timeout=10):
+        import requests
+        r = requests.get(endpoint_url, timeout=timeout)
+        r.raise_for_status()
+        return r.text
 
 # --- App Integration ---
 # [Integrated into app.py for Job ID resume support]

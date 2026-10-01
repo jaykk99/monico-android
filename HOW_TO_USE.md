@@ -1,43 +1,72 @@
-# How to Use Monico Android v2.5
+# How to Use Monico Android v4.5
 
-Welcome to the official Monico Android guide. This document covers installation, core features, and operational protocols for the on-device AI terminal.
+On-device terminal app: a local web UI (served by Microdot, shown in a Toga
+WebView on Android) with a real local command interpreter. No accounts, no
+keys, no network needed.
 
-## 1. Installation
+## 1. Run it
 
-To build and run Monico on your Android device:
+**On Android (native APK):** see "Build a native APK" in README.md — requires
+the Android SDK + Briefcase.
 
-1.  **Clone the Repo**: `git clone https://github.com/jaykk99/monico-android.git`.
-2.  **Install Dependencies**: Ensure you have Python and Briefcase installed: `pip install briefcase`.
-3.  **Build the App**: `briefcase build android`.
-4.  **Run/Deploy**: Connect your device and run `briefcase run android` or generate an APK via the GitHub Actions pipeline.
+**On desktop (UI testing / demo):**
+```bash
+pip install -r requirements.txt
+python3 app.py        # open http://localhost:5000
+```
 
-## 2. The Terminal (Main Interface)
+**In Termux:** `bash termux_install.sh`
 
-The main screen is an interactive shell optimized for low-latency code execution.
+## 2. The Terminal tab
 
-- **Execute Python**: Type any Python code into the input field and press Enter. The **MonaCoreV27** engine will process it on-device.
-- **Uncensored Logic**: Technical and architectural queries are processed without refusal constraints.
+Type a command, press Enter. `↑`/`↓` cycle history.
 
-## 3. MonaCoreV27 Reasoning Engine
+Local commands (all run on-device):
 
-Monico uses a specialized **BitNet 1.58-bit** transformer loop.
+| command | what it does |
+|---|---|
+| `help` | list commands |
+| `health` | CPU/RAM snapshot from HealthGuard |
+| `scan <path>` | forensic SHA-256 scan of a directory (bounded) |
+| `job save {"task":"…"}` | persist a job, prints its ID |
+| `job list` | list persisted jobs |
+| `job done <id>` | mark a job DONE |
+| `fetch <url>` | pull text from a URL (truncated at 20k chars) |
 
-- **Adaptive Depth**: The model re-runs its transformer blocks until reasoning converges, allowing for deeper 'thinking' on complex problems.
-- **On-Device Inference**: All reasoning happens locally on your ARM64 kernel, ensuring privacy and speed.
+Anything else is answered by the built-in MonaCore engine (canned on-device
+response — there is no external model call).
 
-## 4. Forensic Auditing
+## 3. The Forensics tab
 
-Use the built-in forensics module to scan your device's environment.
+Enter a directory, hit SCAN. Lists each file with size and SHA-256 prefix.
+Safety bounds: 500 files max, 1 MiB hashed per file, symlinks skipped —
+a scan can never hang the app. Results render in a table, XSS-safe.
 
-- **Deep Scans**: Audit file hashes and system configurations to detect anomalies.
-- **Command**: `from forensics import ForensicsScanner; print(ForensicsScanner().deep_scan())` inside the terminal.
+## 4. The System tab
 
-## 5. 24-Hour Autonomous Loop
+Live CPU/RAM bars and status (`OPTIMAL`/`THROTTLING` against the
+30% CPU / 512 MB guard limits), engine identity, last-check timestamp.
+Header LEDs show the same at a glance on every tab.
 
-Monico is designed for persistent state-driven execution.
+## 5. The Jobs tab
 
-- **Heartbeat**: The app maintains a background thread for continuous auditing.
-- **Logging**: All actions are logged to the on-device console for periodic review.
+Save a JSON job, watch the queue, mark jobs DONE. Jobs persist in
+`monico_factory.json` (atomic writes, survives restarts) — this is the
+state store factory runs use to resume.
 
----
-*Monico Project - Intelligence Without Constraints*
+## 6. HealthGuard CLI
+
+```bash
+python3 health_guard.py --once              # single check, exit
+python3 health_guard.py --interval 5         # watch loop (Ctrl-C stops)
+```
+
+## 7. API reference
+
+- `GET /` — the UI
+- `POST /api/execute` `{"command": "…"}` → `{"output": "…"}`
+- `GET /api/health` → `{status, cpu, ram_mb, ram_pct, ts, engine}`
+- `POST /api/scan` `{"path": "…", "max_files": 500}` → `{scanned, truncated, files[]}`
+- `GET /api/jobs` → `{jobs: {id: {data, status}}}`
+- `POST /api/jobs` `{"data": {…}}` → `{job_id}` (201)
+- `PATCH /api/jobs/<id>` `{"status": "DONE"}` → `{job_id, status}`

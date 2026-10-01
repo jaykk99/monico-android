@@ -1,13 +1,13 @@
 [tool.briefcase]
 project_name = "MonicoAndroid"
 bundle = "com.jaykk99.monicoandroid"
-version = "2.5"
+version = "4.5"
 url = "https://github.com/jaykk99/monico-android"
 license = "MIT"
 
 [tool.briefcase.app.monicoandroid]
 formal_name = "Monico"
-description = "Monico Android v2.5 - Uncensored AI Terminal"
+description = "Monico Android v4.5 - Uncensored AI Terminal"
 source_dir = "."
 requires = [
     "toga-android",

@@ -42,7 +42,7 @@ local web server (Microdot) serving a tabbed terminal UI
 pip install -r requirements.txt
 python3 app.py        # serves the UI at http://localhost:5000
 python3 health_guard.py --once
-python3 -m unittest tests.test_smoke   # 22 tests
+python3 -m unittest tests.test_smoke tests.test_commands   # 71 tests
 ```
 
 ## Termux quick start

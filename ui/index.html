@@ -218,7 +218,7 @@ document.querySelectorAll(".nav-item").forEach(el => {
 const history = []; let hIdx = -1;
 const COMMANDS = ["help", "health", "health full", "scan ", "job save ", "job list",
   "job done ", "job get ", "job clear", "fetch ", "ls ", "cat ", "hash ", "disk",
-  "find ", "date", "uptime", "sysinfo", "ps", "net", "head ", "tail ", "wc ", "du "];
+  "find ", "date", "uptime", "sysinfo", "ps", "net", "head ", "tail ", "wc ", "du ", "log"];
 let lastOutput = "";
 async function sendCmd(val) {
   val = (val || "").trim();

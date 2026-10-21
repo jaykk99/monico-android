@@ -10,6 +10,7 @@ import platform
 import shutil
 import threading
 import time
+from collections import deque
 
 from microdot import Microdot, Response
 
@@ -30,7 +31,7 @@ BATCH_MAX_COMMANDS = 20
 
 COMMANDS = ("help", "health", "scan", "job", "fetch", "ls", "cat",
             "hash", "disk", "find", "date", "uptime", "sysinfo",
-            "ps", "net", "head", "tail", "wc", "du")
+            "ps", "net", "head", "tail", "wc", "du", "log")
 
 # --- MONICO ANDROID v4.5 ---
 
@@ -62,6 +63,19 @@ jobs = StatePersistence(os.path.join(APP_DIR, "monico_factory.json"))
 bridge = DataBridge()
 guard = HealthGuard()
 
+# Recent commands seen by the API layer (newest first, capped).
+# Populated by /api/execute and /api/execute/batch only, so unit tests
+# calling run_command() directly never pollute it.
+cmdlog = deque(maxlen=50)
+
+
+def log_command(cmd, output):
+    cmdlog.appendleft({
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "command": cmd[:200],
+        "ok": not output.startswith("ERROR"),
+    })
+
 HELP_TEXT = """local commands:
   help                 this list
   health [full]        device CPU/RAM health snapshot (full: limits + disk)
@@ -86,6 +100,7 @@ HELP_TEXT = """local commands:
   tail <file> [n]      last n lines of a text file (default 20)
   wc <file>            line/word/byte counts (10 MiB max)
   du <path>            disk used under a directory
+  log                  recent commands run through the API (newest first)
 anything else goes to the MonaCore engine."""
 
 
@@ -418,6 +433,11 @@ def run_command(cmd):
         return cmd_wc(arg)
     if verb == "du":
         return cmd_du(arg)
+    if verb == "log":
+        if not cmdlog:
+            return "no commands logged yet"
+        return "\n".join(f"{e['at']}  [{'OK' if e['ok'] else 'ERR'}]  {e['command']}"
+                         for e in list(cmdlog)[:20])
     if verb == "scan":
         path = arg.strip() or "."
         try:
@@ -474,7 +494,9 @@ def api_execute(req):
     cmd = body.get("command", "")
     if not isinstance(cmd, str):
         return {"output": "ERROR: command must be a string"}, 400
-    return {"output": run_command(cmd[:2000])}
+    out = run_command(cmd[:2000])
+    log_command(cmd, out)
+    return {"output": out}
 
 
 @server.route("/api/execute/batch", methods=["POST"])
@@ -493,8 +515,15 @@ def api_execute_batch(req):
             results.append({"command": c,
                             "output": "ERROR: command must be a string"})
             continue
-        results.append({"command": c, "output": run_command(c[:2000])})
+        out = run_command(c[:2000])
+        log_command(c, out)
+        results.append({"command": c, "output": out})
     return {"results": results}
+
+
+@server.route("/api/cmdlog")
+def api_cmdlog(req):
+    return {"commands": list(cmdlog)}
 
 
 @server.route("/api/version")

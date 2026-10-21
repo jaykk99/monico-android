@@ -344,6 +344,26 @@ class MoreCommandsTest(unittest.TestCase):
             self.assertIn(key, data)
         self.assertIn("total_mb", data["disk"])
 
+    def test_cmdlog_records_api_commands(self):
+        _ensure_server()
+        app.cmdlog.clear()
+        _post("/api/execute", {"command": "disk"})
+        _post("/api/execute", {"command": "bogus-cmd"})
+        code, data = _get_json("/api/cmdlog")
+        self.assertEqual(code, 200)
+        cmds = [e["command"] for e in data["commands"]]
+        self.assertEqual(cmds[:2], ["bogus-cmd", "disk"])
+        self.assertTrue(data["commands"][1]["ok"])
+        self.assertTrue(data["commands"][0]["ok"])  # engine replies are not ERRORs
+
+    def test_log_command_shows_recent(self):
+        _ensure_server()
+        app.cmdlog.clear()
+        _post("/api/execute", {"command": "date"})
+        out = app.run_command("log")
+        self.assertIn("date", out)
+        self.assertIn("[OK]", out)
+
 
 if __name__ == "__main__":
     unittest.main()

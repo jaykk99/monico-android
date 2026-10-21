@@ -265,5 +265,85 @@ class ForensicsExtraTest(unittest.TestCase):
         self.assertEqual(records[0]["path"], os.path.join("sub", "x.txt"))
 
 
+class MoreCommandsTest(unittest.TestCase):
+    def test_head_default_and_n(self):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "l.txt")
+        open(p, "w").write("\n".join("line%d" % i for i in range(50)))
+        out = app.run_command("head " + p)
+        self.assertEqual(len(out.splitlines()), 20)
+        self.assertTrue(out.startswith("line0"))
+        out = app.run_command("head %s 3" % p)
+        self.assertEqual(out.splitlines(), ["line0", "line1", "line2"])
+
+    def test_head_bad_args(self):
+        self.assertIn("usage", app.run_command("head"))
+        self.assertIn("ERROR", app.run_command("head /nonexistent-xyz f"))
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "l.txt")
+        open(p, "w").write("x")
+        self.assertIn("ERROR", app.run_command("head %s abc" % p))
+        self.assertIn("ERROR", app.run_command("head %s 999" % p))
+
+    def test_head_refuses_binary(self):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "b.bin")
+        open(p, "wb").write(b"\x00\x01")
+        self.assertIn("binary", app.run_command("head " + p))
+
+    def test_tail_last_lines(self):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "l.txt")
+        open(p, "w").write("\n".join("line%d" % i for i in range(50)))
+        out = app.run_command("tail %s 3" % p)
+        self.assertEqual(out.splitlines(), ["line47", "line48", "line49"])
+        out = app.run_command("tail " + p)
+        self.assertEqual(len(out.splitlines()), 20)
+        self.assertTrue(out.endswith("line49"))
+
+    def test_tail_bad_args(self):
+        self.assertIn("usage", app.run_command("tail"))
+        self.assertIn("ERROR", app.run_command("tail /nonexistent-xyz 5"))
+
+    def test_wc_counts(self):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "w.txt")
+        open(p, "w").write("hello world\nfoo bar baz\n")
+        out = app.run_command("wc " + p)
+        self.assertIn("2 lines", out)
+        self.assertIn("5 words", out)
+        self.assertIn("bytes", out)
+
+    def test_wc_bad_args(self):
+        self.assertIn("usage", app.run_command("wc"))
+        self.assertIn("ERROR", app.run_command("wc /nonexistent-xyz"))
+
+    def test_du(self):
+        d = tempfile.mkdtemp()
+        open(os.path.join(d, "a.txt"), "w").write("x" * 2048)
+        out = app.run_command("du " + d)
+        self.assertIn("KB in 1 files", out)
+        self.assertIn("ERROR", app.run_command("du /nonexistent-xyz"))
+
+    def test_ps_lists_processes(self):
+        out = app.run_command("ps")
+        self.assertRegex(out, r"\d+\s+\d")
+        self.assertIn("MB", out)
+
+    def test_net(self):
+        out = app.run_command("net")
+        self.assertIn("sent=", out)
+        self.assertIn("recv=", out)
+
+    def test_sysinfo_api(self):
+        _ensure_server()
+        code, data = _get_json("/api/sysinfo")
+        self.assertEqual(code, 200)
+        for key in ("platform", "python", "cpus", "ram_total_mb",
+                    "uptime_s", "disk"):
+            self.assertIn(key, data)
+        self.assertIn("total_mb", data["disk"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -42,6 +42,12 @@ Local commands (all run on-device):
 | `date` | current date/time |
 | `uptime` | device uptime |
 | `sysinfo` | platform, Python version, CPU count, total RAM |
+| `ps` | top processes by CPU (25 max) |
+| `net` | network bytes/packets sent/received |
+| `head <file> [n]` | first n lines of a text file (default 20) |
+| `tail <file> [n]` | last n lines of a text file (default 20) |
+| `wc <file>` | line/word/byte counts (10 MiB max) |
+| `du <path>` | disk used under a directory |
 
 Anything else is answered by the built-in MonaCore engine (canned on-device
 response — there is no external model call).
@@ -78,6 +84,7 @@ python3 health_guard.py --interval 5         # watch loop (Ctrl-C stops)
 - `POST /api/execute/batch` `{"commands": ["…"]}` → `{"results": [{"command","output"}]}` (20 max)
 - `GET /api/version` → `{version, engine, commands}`
 - `GET /api/disk` → `{total_mb, used_mb, free_mb}`
+- `GET /api/sysinfo` → platform, python, cpus, ram, uptime, disk
 - `DELETE /api/jobs` → clears the whole job queue
 - `GET /api/health` → `{status, cpu, ram_mb, ram_pct, ts, engine}`
 - `POST /api/scan` `{"path": "…", "max_files": 500}` → `{scanned, truncated, files[]}`

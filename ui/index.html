@@ -217,8 +217,8 @@ document.querySelectorAll(".nav-item").forEach(el => {
 /* ---------- terminal ---------- */
 const history = []; let hIdx = -1;
 const COMMANDS = ["help", "health", "health full", "scan ", "job save ", "job list",
-  "job done ", "job clear", "fetch ", "ls ", "cat ", "hash ", "disk",
-  "find ", "date", "uptime", "sysinfo"];
+  "job done ", "job get ", "job clear", "fetch ", "ls ", "cat ", "hash ", "disk",
+  "find ", "date", "uptime", "sysinfo", "ps", "net", "head ", "tail ", "wc ", "du "];
 let lastOutput = "";
 async function sendCmd(val) {
   val = (val || "").trim();
@@ -244,7 +244,7 @@ async function sendCmd(val) {
   t.parentElement.scrollTop = t.parentElement.scrollHeight;
 }
 // quick-command chips
-["help", "health", "health full", "disk", "sysinfo", "date", "uptime"].forEach(c => {
+["help", "health", "health full", "disk", "sysinfo", "ps", "net", "date", "uptime"].forEach(c => {
   const b = document.createElement("button");
   b.className = "ghost"; b.textContent = c.toUpperCase();
   b.style.padding = "4px 10px"; b.style.fontSize = "10px";

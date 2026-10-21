@@ -29,7 +29,8 @@ FIND_MAX_MATCHES = 200
 BATCH_MAX_COMMANDS = 20
 
 COMMANDS = ("help", "health", "scan", "job", "fetch", "ls", "cat",
-            "hash", "disk", "find", "date", "uptime", "sysinfo")
+            "hash", "disk", "find", "date", "uptime", "sysinfo",
+            "ps", "net", "head", "tail", "wc", "du")
 
 # --- MONICO ANDROID v4.5 ---
 
@@ -79,6 +80,12 @@ HELP_TEXT = """local commands:
   date                 current date/time
   uptime               device uptime
   sysinfo              platform, python, cpu count, total RAM
+  ps                   top processes by CPU (25 max)
+  net                  network bytes/packets sent/received
+  head <file> [n]      first n lines of a text file (default 20)
+  tail <file> [n]      last n lines of a text file (default 20)
+  wc <file>            line/word/byte counts (10 MiB max)
+  du <path>            disk used under a directory
 anything else goes to the MonaCore engine."""
 
 
@@ -224,6 +231,144 @@ def cmd_sysinfo():
             f"cpus={psutil.cpu_count()} ram_total={total_mb}MB")
 
 
+def cmd_ps():
+    import psutil
+    rows = []
+    for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_info"]):
+        try:
+            rows.append(p.info)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    rows.sort(key=lambda i: i.get("cpu_percent") or 0, reverse=True)
+    lines = []
+    for i in rows[:25]:
+        mem = i.get("memory_info")
+        mem_mb = mem.rss // 1024 // 1024 if mem else 0
+        lines.append("%6s %5.1f%% %5dMB %s"
+                     % (i.get("pid"), i.get("cpu_percent") or 0,
+                        mem_mb, i.get("name") or "?"))
+    return "\n".join(lines) if lines else "no processes visible"
+
+
+def cmd_net():
+    import psutil
+    c = psutil.net_io_counters()
+    return ("sent=%dKB recv=%dKB pkts_sent=%d pkts_recv=%d"
+            % (c.bytes_sent // 1024, c.bytes_recv // 1024,
+               c.packets_sent, c.packets_recv))
+
+
+def _parse_file_n(arg, name):
+    """Split '<file> [n]' args. Returns (target, n, error)."""
+    parts = arg.split()
+    if not parts:
+        return None, 0, f"usage: {name} <file> [n]"
+    target = parts[0]
+    n = 20
+    if len(parts) > 1:
+        try:
+            n = int(parts[1])
+        except ValueError:
+            return None, 0, "ERROR: n must be an integer"
+    if not 1 <= n <= 200:
+        return None, 0, "ERROR: n must be 1..200"
+    return target, n, None
+
+
+def cmd_head(arg):
+    target, n, err = _parse_file_n(arg, "head")
+    if err:
+        return err
+    p, ferr = _resolve_file(target)
+    if ferr:
+        return ferr
+    try:
+        with open(p, "rb") as f:
+            data = f.read(CAT_MAX_CHARS * 2 + 1)
+    except OSError as e:
+        return f"ERROR: {e}"
+    if b"\x00" in data:
+        return "ERROR: binary file, not text"
+    lines = data.decode("utf-8", errors="replace").splitlines()[:n]
+    out = "\n".join(lines)
+    return out if out else "(empty file)"
+
+
+def cmd_tail(arg):
+    target, n, err = _parse_file_n(arg, "tail")
+    if err:
+        return err
+    p, ferr = _resolve_file(target)
+    if ferr:
+        return ferr
+    try:
+        with open(p, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            # Read at most the last 64 KiB; enough for 200 short lines.
+            start = max(0, size - 65536)
+            f.seek(start)
+            data = f.read()
+    except OSError as e:
+        return f"ERROR: {e}"
+    if b"\x00" in data:
+        return "ERROR: binary file, not text"
+    text = data.decode("utf-8", errors="replace")
+    if start > 0:
+        # we may have started mid-line; drop the partial first line
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+    lines = text.splitlines()[-n:]
+    out = "\n".join(lines)
+    return out if out else "(empty file)"
+
+
+def cmd_wc(arg):
+    target = arg.strip()
+    if not target:
+        return "usage: wc <file>"
+    p, err = _resolve_file(target)
+    if err:
+        return err
+    lines = words = size = 0
+    try:
+        with open(p, "rb") as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > HASH_MAX_BYTES:
+                    return ("ERROR: file over %d MiB, too big to count"
+                            % (HASH_MAX_BYTES // 1024 // 1024))
+                lines += chunk.count(b"\n")
+                words += len(chunk.split())
+    except OSError as e:
+        return f"ERROR: {e}"
+    return f"{lines} lines, {words} words, {size} bytes"
+
+
+def cmd_du(arg):
+    target = arg.strip() or "."
+    p, err = _resolve_dir(target)
+    if err:
+        return err
+    total = files = 0
+    for root, _dirs, names in os.walk(p, followlinks=False):
+        for name in names:
+            fp = os.path.join(root, name)
+            try:
+                if os.path.islink(fp):
+                    continue
+                total += os.path.getsize(fp)
+                files += 1
+            except OSError:
+                continue
+            if files >= 50000:
+                return (f"over 50000 files, {total // 1024}KB so far "
+                        "(truncated)")
+    return f"{total // 1024}KB in {files} files"
+
+
 def run_command(cmd):
     """Local command interpreter. Returns a plain-text reply."""
     cmd = (cmd or "").strip()
@@ -261,6 +406,18 @@ def run_command(cmd):
         return cmd_uptime()
     if verb == "sysinfo":
         return cmd_sysinfo()
+    if verb == "ps":
+        return cmd_ps()
+    if verb == "net":
+        return cmd_net()
+    if verb == "head":
+        return cmd_head(arg)
+    if verb == "tail":
+        return cmd_tail(arg)
+    if verb == "wc":
+        return cmd_wc(arg)
+    if verb == "du":
+        return cmd_du(arg)
     if verb == "scan":
         path = arg.strip() or "."
         try:
@@ -352,6 +509,23 @@ def api_disk(req):
     return {"total_mb": du.total // 1024 // 1024,
             "used_mb": du.used // 1024 // 1024,
             "free_mb": du.free // 1024 // 1024}
+
+
+@server.route("/api/sysinfo")
+def api_sysinfo(req):
+    import psutil
+    du = shutil.disk_usage(APP_DIR)
+    vm = psutil.virtual_memory()
+    return {
+        "platform": f"{platform.system()} {platform.machine()}",
+        "python": platform.python_version(),
+        "cpus": psutil.cpu_count(),
+        "ram_total_mb": vm.total // 1024 // 1024,
+        "uptime_s": int(time.time() - psutil.boot_time()),
+        "disk": {"total_mb": du.total // 1024 // 1024,
+                 "used_mb": du.used // 1024 // 1024,
+                 "free_mb": du.free // 1024 // 1024},
+    }
 
 
 @server.route("/api/health")

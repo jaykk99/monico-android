@@ -3,9 +3,13 @@
 Toga app: opens a WebView pointed at a local Microdot server (port 5000).
 Desktop (no Toga): `python app.py` just serves the web UI for testing.
 """
+import hashlib
 import json
 import os
+import platform
+import shutil
 import threading
+import time
 
 from microdot import Microdot, Response
 
@@ -16,6 +20,16 @@ from health_guard import HealthGuard
 VERSION = "v4.5"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 UI_PATH = os.path.join(APP_DIR, "ui", "index.html")
+
+# Bounds so one command can never hang or blow up the on-device server.
+LS_MAX_ENTRIES = 200
+CAT_MAX_CHARS = 10000
+HASH_MAX_BYTES = 10 * 1024 * 1024
+FIND_MAX_MATCHES = 200
+BATCH_MAX_COMMANDS = 20
+
+COMMANDS = ("help", "health", "scan", "job", "fetch", "ls", "cat",
+            "hash", "disk", "find", "date", "uptime", "sysinfo")
 
 # --- MONICO ANDROID v4.5 ---
 
@@ -49,13 +63,165 @@ guard = HealthGuard()
 
 HELP_TEXT = """local commands:
   help                 this list
-  health               device CPU/RAM health snapshot
+  health [full]        device CPU/RAM health snapshot (full: limits + disk)
   scan <path>          forensic SHA-256 scan of a directory (bounded)
   job save <json>      persist a job, returns its ID
   job list             list persisted jobs
   job done <id>        mark a job DONE
+  job get <id>         show one job as JSON
+  job clear            delete ALL jobs from the queue
   fetch <url>          pull text from a URL (truncated)
+  ls <path>            list a directory (200 entries max)
+  cat <file>           print a text file (10k chars max, no binaries)
+  hash <file>          full SHA-256 hex of a file (10 MiB read max)
+  disk                 disk usage for the app volume
+  find <dir> <text>    filename substring search (200 matches max)
+  date                 current date/time
+  uptime               device uptime
+  sysinfo              platform, python, cpu count, total RAM
 anything else goes to the MonaCore engine."""
+
+
+def _resolve_file(target):
+    """Resolve a user path; returns (abspath, error). Never follows symlinks."""
+    p = os.path.abspath(os.path.expanduser(target))
+    if os.path.islink(p):
+        return None, f"ERROR: symlinks not followed: {target}"
+    if not os.path.isfile(p):
+        return None, f"ERROR: not a file: {target}"
+    return p, None
+
+
+def _resolve_dir(target):
+    p = os.path.abspath(os.path.expanduser(target))
+    if not os.path.isdir(p):
+        return None, f"ERROR: not a directory: {target}"
+    return p, None
+
+
+def cmd_ls(arg):
+    p, err = _resolve_dir(arg.strip() or ".")
+    if err:
+        return err
+    try:
+        names = sorted(os.listdir(p))[:LS_MAX_ENTRIES]
+    except OSError as e:
+        return f"ERROR: {e}"
+    if not names:
+        return "(empty)"
+    lines = []
+    for name in names:
+        fp = os.path.join(p, name)
+        try:
+            if os.path.isdir(fp) and not os.path.islink(fp):
+                lines.append(f"{name}/")
+            else:
+                lines.append(f"{name}  {os.path.getsize(fp)}B")
+        except OSError:
+            lines.append(name)
+    out = "\n".join(lines)
+    if len(names) >= LS_MAX_ENTRIES:
+        out += f"\n…truncated at {LS_MAX_ENTRIES} entries"
+    return out
+
+
+def cmd_cat(arg):
+    target = arg.strip()
+    if not target:
+        return "usage: cat <file>"
+    p, err = _resolve_file(target)
+    if err:
+        return err
+    try:
+        with open(p, "rb") as f:
+            data = f.read(CAT_MAX_CHARS + 1)
+    except OSError as e:
+        return f"ERROR: {e}"
+    if b"\x00" in data:
+        return "ERROR: binary file, not text"
+    text = data[:CAT_MAX_CHARS].decode("utf-8", errors="replace")
+    if len(data) > CAT_MAX_CHARS:
+        text += f"\n…[truncated at {CAT_MAX_CHARS} chars]"
+    return text if text else "(empty file)"
+
+
+def cmd_hash(arg):
+    target = arg.strip()
+    if not target:
+        return "usage: hash <file>"
+    p, err = _resolve_file(target)
+    if err:
+        return err
+    h = hashlib.sha256()
+    try:
+        with open(p, "rb") as f:
+            remaining = HASH_MAX_BYTES
+            while remaining > 0:
+                chunk = f.read(min(65536, remaining))
+                if not chunk:
+                    break
+                h.update(chunk)
+                remaining -= len(chunk)
+    except OSError as e:
+        return f"ERROR: {e}"
+    return h.hexdigest()
+
+
+def cmd_disk():
+    du = shutil.disk_usage(APP_DIR)
+    return (f"total={du.total // 1024 // 1024}MB "
+            f"used={du.used // 1024 // 1024}MB "
+            f"free={du.free // 1024 // 1024}MB")
+
+
+def cmd_find(arg):
+    parts = arg.split(None, 1)
+    if len(parts) < 2:
+        return "usage: find <dir> <name-substring>"
+    p, err = _resolve_dir(parts[0])
+    if err:
+        return err
+    pat = parts[1].lower()
+    matches = []
+    for root, _dirs, files in os.walk(p, followlinks=False):
+        for name in files:
+            if pat in name.lower():
+                matches.append(os.path.join(root, name))
+                if len(matches) >= FIND_MAX_MATCHES:
+                    break
+        if len(matches) >= FIND_MAX_MATCHES:
+            break
+    if not matches:
+        return "no matches"
+    out = "\n".join(matches)
+    if len(matches) >= FIND_MAX_MATCHES:
+        out += f"\n…truncated at {FIND_MAX_MATCHES} matches"
+    return out
+
+
+def cmd_uptime():
+    import psutil
+    secs = int(time.time() - psutil.boot_time())
+    days, secs = divmod(secs, 86400)
+    hours, secs = divmod(secs, 3600)
+    mins, secs = divmod(secs, 60)
+    bits = []
+    if days:
+        bits.append(f"{days}d")
+    if hours:
+        bits.append(f"{hours}h")
+    if mins:
+        bits.append(f"{mins}m")
+    bits.append(f"{secs}s")
+    return "uptime " + " ".join(bits)
+
+
+def cmd_sysinfo():
+    import psutil
+    total_mb = psutil.virtual_memory().total // 1024 // 1024
+    return (f"platform={platform.system()} {platform.machine()} "
+            f"python={platform.python_version()} "
+            f"cpus={psutil.cpu_count()} ram_total={total_mb}MB")
 
 
 def run_command(cmd):
@@ -71,8 +237,30 @@ def run_command(cmd):
         return HELP_TEXT
     if verb == "health":
         s = guard.snapshot()
-        return (f"status={s['status']} cpu={s['cpu']}% "
+        base = (f"status={s['status']} cpu={s['cpu']}% "
                 f"ram={s['ram_mb']}MB ({s['ram_pct']}%)")
+        if arg.strip().lower() == "full":
+            du = shutil.disk_usage(APP_DIR)
+            return (base +
+                    f" limits: cpu<={guard.cpu_limit}% ram<={guard.ram_limit}MB"
+                    f" disk_free={du.free // 1024 // 1024}MB ts={s['ts']}")
+        return base
+    if verb == "ls":
+        return cmd_ls(arg)
+    if verb == "cat":
+        return cmd_cat(arg)
+    if verb == "hash":
+        return cmd_hash(arg)
+    if verb == "disk":
+        return cmd_disk()
+    if verb == "find":
+        return cmd_find(arg)
+    if verb == "date":
+        return time.strftime("%Y-%m-%d %H:%M:%S %Z")
+    if verb == "uptime":
+        return cmd_uptime()
+    if verb == "sysinfo":
+        return cmd_sysinfo()
     if verb == "scan":
         path = arg.strip() or "."
         try:
@@ -102,7 +290,13 @@ def run_command(cmd):
         if action == "done":
             ok = jobs.set_status(rest.strip(), "DONE")
             return "marked DONE" if ok else "ERROR: unknown job id"
-        return "usage: job save <json> | job list | job done <id>"
+        if action == "get":
+            j = jobs.get_job(rest.strip())
+            return json.dumps(j) if j else "ERROR: unknown job id"
+        if action == "clear":
+            jobs.clear()
+            return "job queue cleared"
+        return "usage: job save <json> | job list | job done <id> | job get <id> | job clear"
     if verb == "fetch":
         url = arg.strip()
         if not url.startswith(("http://", "https://")):
@@ -124,6 +318,40 @@ def api_execute(req):
     if not isinstance(cmd, str):
         return {"output": "ERROR: command must be a string"}, 400
     return {"output": run_command(cmd[:2000])}
+
+
+@server.route("/api/execute/batch", methods=["POST"])
+def api_execute_batch(req):
+    """Run up to BATCH_MAX_COMMANDS commands in one call, in order."""
+    try:
+        body = req.json or {}
+    except Exception:
+        body = {}
+    cmds = body.get("commands", [])
+    if not isinstance(cmds, list):
+        return {"error": "commands must be a list of strings"}, 400
+    results = []
+    for c in cmds[:BATCH_MAX_COMMANDS]:
+        if not isinstance(c, str):
+            results.append({"command": c,
+                            "output": "ERROR: command must be a string"})
+            continue
+        results.append({"command": c, "output": run_command(c[:2000])})
+    return {"results": results}
+
+
+@server.route("/api/version")
+def api_version(req):
+    return {"version": VERSION, "engine": engine.identity,
+            "commands": sorted(COMMANDS)}
+
+
+@server.route("/api/disk")
+def api_disk(req):
+    du = shutil.disk_usage(APP_DIR)
+    return {"total_mb": du.total // 1024 // 1024,
+            "used_mb": du.used // 1024 // 1024,
+            "free_mb": du.free // 1024 // 1024}
 
 
 @server.route("/api/health")
@@ -185,6 +413,12 @@ def api_jobs_update(req, job_id):
     if not ok:
         return {"error": "unknown job id"}, 404
     return {"job_id": job_id, "status": status}
+
+
+@server.route("/api/jobs", methods=["DELETE"])
+def api_jobs_clear(req):
+    jobs.clear()
+    return {"ok": True, "cleared": True}
 
 
 @server.route("/")

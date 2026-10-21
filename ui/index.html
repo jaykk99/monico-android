@@ -110,7 +110,10 @@
 </nav>
 
 <main>
-  <div id="terminal" class="tab active"><div id="term-out"></div></div>
+  <div id="terminal" class="tab active">
+    <div class="row" id="quick" style="margin-bottom:8px;flex-wrap:wrap"></div>
+    <div id="term-out"></div>
+  </div>
 
   <div id="forensics" class="tab">
     <div class="card">
@@ -137,6 +140,13 @@
       <div class="kv"><span class="k">checked</span><span id="sys-ts" class="dim">–</span></div>
     </div>
     <div class="card">
+      <h3>DISK</h3>
+      <div class="kv"><span class="k">used</span><span id="sys-disk-used">–</span></div>
+      <div class="bar"><div id="sys-disk-bar"></div></div>
+      <div class="kv"><span class="k">free</span><span id="sys-disk-free">–</span></div>
+      <div class="kv"><span class="k">total</span><span id="sys-disk-total" class="dim">–</span></div>
+    </div>
+    <div class="card">
       <h3>ENGINE</h3>
       <div class="kv"><span class="k">identity</span><span id="sys-engine">–</span></div>
       <div class="kv"><span class="k">mode</span><span class="ok">ON-DEVICE · KEYLESS · OFFLINE</span></div>
@@ -154,7 +164,7 @@
       </div>
     </div>
     <div class="card"><h3>JOB QUEUE</h3><div id="job-list" class="dim">Loading…</div>
-      <div class="row"><button class="ghost" id="job-refresh">REFRESH</button></div>
+      <div class="row"><button class="ghost" id="job-refresh">REFRESH</button><button class="ghost" id="job-clear">CLEAR ALL</button></div>
     </div>
   </div>
 </main>
@@ -162,7 +172,9 @@
 <div class="promptbar">
   <span class="p">$</span>
   <input id="cmd" autocomplete="off" autocapitalize="off" spellcheck="false"
-         placeholder="type 'help' for commands">
+         placeholder="type 'help' for commands (Tab completes)">
+  <button id="cmd-copy" class="ghost" style="white-space:nowrap">COPY</button>
+  <button id="cmd-clear" class="ghost" style="white-space:nowrap">CLEAR</button>
 </div>
 
 <script>
@@ -204,18 +216,17 @@ document.querySelectorAll(".nav-item").forEach(el => {
 
 /* ---------- terminal ---------- */
 const history = []; let hIdx = -1;
-$("cmd").addEventListener("keydown", async e => {
-  const box = e.target, t = $("term-out");
-  if (e.key === "ArrowUp") { e.preventDefault();
-    if (history.length) { hIdx = Math.max(0, hIdx - 1); box.value = history[hIdx] || ""; } return; }
-  if (e.key === "ArrowDown") { e.preventDefault();
-    if (history.length) { hIdx = Math.min(history.length, hIdx + 1);
-      box.value = hIdx < history.length ? history[hIdx] : ""; } return; }
-  if (e.key !== "Enter") return;
-  const val = box.value.trim(); box.value = "";
+const COMMANDS = ["help", "health", "health full", "scan ", "job save ", "job list",
+  "job done ", "job clear", "fetch ", "ls ", "cat ", "hash ", "disk",
+  "find ", "date", "uptime", "sysinfo"];
+let lastOutput = "";
+async function sendCmd(val) {
+  val = (val || "").trim();
+  const t = $("term-out");
   if (!val) return;
   history.push(val); hIdx = history.length;
   line(t, "$ " + val, "ok");
+  line(t, new Date().toLocaleTimeString(), "dim");
   const wait = line(t, "…", "dim");
   try {
     const r = await fetch("/api/execute", { method: "POST",
@@ -223,13 +234,48 @@ $("cmd").addEventListener("keydown", async e => {
       body: JSON.stringify({ command: val }) });
     const data = await r.json();
     wait.remove();
-    line(t, data.output || "(no output)", r.ok ? "" : "err");
+    lastOutput = data.output || "(no output)";
+    line(t, lastOutput, r.ok ? "" : "err");
   } catch (err) {
     wait.remove();
-    line(t, "ERROR: " + err.message, "err");
+    lastOutput = "ERROR: " + err.message;
+    line(t, lastOutput, "err");
   }
   t.parentElement.scrollTop = t.parentElement.scrollHeight;
+}
+// quick-command chips
+["help", "health", "health full", "disk", "sysinfo", "date", "uptime"].forEach(c => {
+  const b = document.createElement("button");
+  b.className = "ghost"; b.textContent = c.toUpperCase();
+  b.style.padding = "4px 10px"; b.style.fontSize = "10px";
+  b.addEventListener("click", () => sendCmd(c));
+  $("quick").appendChild(b);
 });
+$("cmd").addEventListener("keydown", e => {
+  const box = e.target;
+  if (e.key === "ArrowUp") { e.preventDefault();
+    if (history.length) { hIdx = Math.max(0, hIdx - 1); box.value = history[hIdx] || ""; } return; }
+  if (e.key === "ArrowDown") { e.preventDefault();
+    if (history.length) { hIdx = Math.min(history.length, hIdx + 1);
+      box.value = hIdx < history.length ? history[hIdx] : ""; } return; }
+  if (e.key === "Tab") { e.preventDefault();
+    const cur = box.value.toLowerCase();
+    const hit = COMMANDS.find(c => c.startsWith(cur) && c !== cur);
+    if (hit) box.value = hit;
+    return; }
+  if (e.key !== "Enter") return;
+  const val = box.value; box.value = "";
+  sendCmd(val);
+});
+$("cmd-copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(lastOutput); }
+  catch {
+    const ta = document.createElement("textarea");
+    ta.value = lastOutput; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy"); ta.remove();
+  }
+});
+$("cmd-clear").addEventListener("click", () => { $("term-out").textContent = ""; });
 
 /* ---------- health LEDs ---------- */
 async function pollHealth() {
@@ -256,6 +302,18 @@ async function refreshSystem() {
     $("sys-ts").textContent = new Date(h.ts * 1000).toLocaleTimeString();
     $("sys-engine").textContent = h.engine || "–";
   } catch { $("sys-status").textContent = "UNREACHABLE"; $("sys-status").className = "err"; }
+  refreshDisk();
+}
+
+/* ---------- disk ---------- */
+async function refreshDisk() {
+  try {
+    const r = await fetch("/api/disk"); const d = await r.json();
+    $("sys-disk-used").textContent = d.used_mb + " MB";
+    $("sys-disk-free").textContent = d.free_mb + " MB";
+    $("sys-disk-total").textContent = d.total_mb + " MB";
+    $("sys-disk-bar").style.width = Math.min(100, d.used_mb / d.total_mb * 100) + "%";
+  } catch { /* leave dashes */ }
 }
 
 /* ---------- forensics tab ---------- */
@@ -298,6 +356,11 @@ $("job-btn").addEventListener("click", async () => {
   if (r.ok) { $("job-data").value = ""; loadJobs(); } else alert(d.error || "save failed");
 });
 $("job-refresh").addEventListener("click", loadJobs);
+$("job-clear").addEventListener("click", async () => {
+  if (!confirm("Delete ALL jobs?")) return;
+  await fetch("/api/jobs", { method: "DELETE" });
+  loadJobs();
+});
 
 async function loadJobs() {
   const box = $("job-list"); box.textContent = "Loading…"; box.className = "dim";

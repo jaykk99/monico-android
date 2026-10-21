@@ -26,12 +26,22 @@ Local commands (all run on-device):
 | command | what it does |
 |---|---|
 | `help` | list commands |
-| `health` | CPU/RAM snapshot from HealthGuard |
+| `health [full]` | CPU/RAM snapshot from HealthGuard (`full` adds limits + disk) |
 | `scan <path>` | forensic SHA-256 scan of a directory (bounded) |
 | `job save {"task":"…"}` | persist a job, prints its ID |
 | `job list` | list persisted jobs |
 | `job done <id>` | mark a job DONE |
+| `job get <id>` | show one job as JSON |
+| `job clear` | delete ALL jobs from the queue |
 | `fetch <url>` | pull text from a URL (truncated at 20k chars) |
+| `ls <path>` | list a directory (200 entries max) |
+| `cat <file>` | print a text file (10k chars max, binary files refused) |
+| `hash <file>` | full SHA-256 hex of a file (10 MiB read max) |
+| `disk` | disk usage for the app volume |
+| `find <dir> <text>` | filename substring search (200 matches max) |
+| `date` | current date/time |
+| `uptime` | device uptime |
+| `sysinfo` | platform, Python version, CPU count, total RAM |
 
 Anything else is answered by the built-in MonaCore engine (canned on-device
 response — there is no external model call).
@@ -64,7 +74,11 @@ python3 health_guard.py --interval 5         # watch loop (Ctrl-C stops)
 ## 7. API reference
 
 - `GET /` — the UI
-- `POST /api/execute` `{"command": "…"}` → `{"output": "…"}`
+- `POST /api/execute` `{"command": "…"}` → `{"output": "…"}` (command capped at 2000 chars)
+- `POST /api/execute/batch` `{"commands": ["…"]}` → `{"results": [{"command","output"}]}` (20 max)
+- `GET /api/version` → `{version, engine, commands}`
+- `GET /api/disk` → `{total_mb, used_mb, free_mb}`
+- `DELETE /api/jobs` → clears the whole job queue
 - `GET /api/health` → `{status, cpu, ram_mb, ram_pct, ts, engine}`
 - `POST /api/scan` `{"path": "…", "max_files": 500}` → `{scanned, truncated, files[]}`
 - `GET /api/jobs` → `{jobs: {id: {data, status}}}`

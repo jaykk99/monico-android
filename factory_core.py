@@ -61,6 +61,10 @@ class StatePersistence:
     def list_jobs(self):
         return self.load_state()
 
+    def clear(self):
+        """Delete all jobs from the queue."""
+        self._write_state({})
+
 
 class DataBridge:
     """

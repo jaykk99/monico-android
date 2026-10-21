@@ -14,9 +14,14 @@ local web server (Microdot) serving a tabbed terminal UI
   terminal with command history, forensics scanner panel, live system stats,
   job queue. All output is rendered XSS-safe.
 - `POST /api/execute` — local command interpreter:
-  `help`, `health`, `scan <path>`, `job save <json> | job list | job done <id>`,
-  `fetch <url>`; anything else goes to the built-in `MonaCoreV27` engine,
+  `help`, `health [full]`, `scan <path>`, `job save <json> | job list | job done <id> | job get <id> | job clear`,
+  `fetch <url>`, `ls <path>`, `cat <file>`, `hash <file>`, `disk`, `find <dir> <text>`,
+  `date`, `uptime`, `sysinfo`; anything else goes to the built-in `MonaCoreV27` engine,
   which returns a canned status line (no external AI model call — offline, keyless).
+- `POST /api/execute/batch` — run up to 20 commands in one call, in order.
+- `GET /api/version` — version, engine identity, command list.
+- `GET /api/disk` — disk usage in MB.
+- `DELETE /api/jobs` — clear the whole job queue.
 - `GET /api/health` — CPU/RAM snapshot via `HealthGuard`.
 - `POST /api/scan` — bounded forensic SHA-256 scan of a directory
   (default 500 files max, 1 MiB hashed per file, skips symlinks).

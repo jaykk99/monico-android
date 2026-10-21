@@ -85,6 +85,7 @@ python3 health_guard.py --interval 5         # watch loop (Ctrl-C stops)
 - `POST /api/execute/batch` `{"commands": ["…"]}` → `{"results": [{"command","output"}]}` (20 max)
 - `GET /api/version` → `{version, engine, commands}`
 - `GET /api/disk` → `{total_mb, used_mb, free_mb}`
+- `GET /api/ps` → top 25 processes by CPU as JSON
 - `GET /api/sysinfo` → platform, python, cpus, ram, uptime, disk
 - `GET /api/cmdlog` → recent API commands, newest first
 - `DELETE /api/jobs` → clears the whole job queue

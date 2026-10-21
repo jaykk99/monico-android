@@ -526,6 +526,27 @@ def api_cmdlog(req):
     return {"commands": list(cmdlog)}
 
 
+@server.route("/api/ps")
+def api_ps(req):
+    """Top processes by CPU as JSON (same data as the ps command)."""
+    import psutil
+    rows = []
+    for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_info"]):
+        try:
+            i = p.info
+            mem = i.get("memory_info")
+            rows.append({
+                "pid": i.get("pid"),
+                "name": i.get("name") or "?",
+                "cpu_pct": round(i.get("cpu_percent") or 0, 1),
+                "mem_mb": (mem.rss // 1024 // 1024) if mem else 0,
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    rows.sort(key=lambda r: r["cpu_pct"], reverse=True)
+    return {"processes": rows[:25]}
+
+
 @server.route("/api/version")
 def api_version(req):
     return {"version": VERSION, "engine": engine.identity,

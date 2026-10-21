@@ -364,6 +364,16 @@ class MoreCommandsTest(unittest.TestCase):
         self.assertIn("date", out)
         self.assertIn("[OK]", out)
 
+    def test_ps_api(self):
+        _ensure_server()
+        code, data = _get_json("/api/ps")
+        self.assertEqual(code, 200)
+        self.assertTrue(data["processes"])
+        self.assertLessEqual(len(data["processes"]), 25)
+        p0 = data["processes"][0]
+        for key in ("pid", "name", "cpu_pct", "mem_mb"):
+            self.assertIn(key, p0)
+
 
 if __name__ == "__main__":
     unittest.main()

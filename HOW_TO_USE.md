@@ -15,7 +15,14 @@ pip install -r requirements.txt
 python3 app.py        # open http://localhost:5000
 ```
 
-**In Termux:** `bash termux_install.sh`
+**In Termux (full block — clone first, then install, then run):**
+```bash
+pkg update -y && pkg install -y git curl
+git clone https://github.com/jaykk99/monico-android.git ~/monico-android
+cd ~/monico-android
+bash termux_install.sh
+python app.py        # open http://127.0.0.1:5000 in your browser
+```
 
 ## 2. The Terminal tab
 

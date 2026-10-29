@@ -46,9 +46,39 @@ python3 -m unittest tests.test_smoke tests.test_commands   # 71 tests
 ```
 
 ## Termux quick start
+
+Paste this whole block into Termux (it clones the repo first — the old
+README told you to run the installer before you had downloaded anything,
+which failed with "No such file or directory"):
+
 ```bash
+pkg update -y && pkg install -y git curl
+git clone https://github.com/jaykk99/monico-android.git ~/monico-android
+cd ~/monico-android
 bash termux_install.sh
+python app.py
 ```
+
+Then open **http://127.0.0.1:5000** in your Android browser.
+
+One-liner version (same installer, it clones for you):
+
+```bash
+curl -sL https://raw.githubusercontent.com/jaykk99/monico-android/main/termux_install.sh -o ~/termux_install.sh && bash ~/termux_install.sh
+cd ~/monico-android && python app.py
+```
+
+Termux notes (why the installer does what it does):
+
+- No Toga in Termux: `app.py` serves the web UI directly when Toga is
+  absent. Installing `toga-android` under Termux Python breaks startup.
+- `psutil` comes from `pkg install python-psutil` (prebuilt). pip would
+  have to compile it from source on the phone.
+- No `torch` (never used by this app, and no Termux-compatible wheel
+  exists) and no Briefcase (APK builds need a computer — see below).
+- `requirements.txt` is for desktop/APK builds. The Termux installer
+  installs only what Termux needs: `microdot` + `requests` via pip,
+  `psutil` via pkg.
 
 ## Build a native APK
 Requires the **Android SDK** (Briefcase cannot build Android targets without it —

@@ -184,6 +184,8 @@ def cmd_hash(arg):
                     break
                 h.update(chunk)
                 remaining -= len(chunk)
+            if remaining == 0 and f.read(1):
+                return "ERROR: file over 10 MiB, too big to hash"
     except OSError as e:
         return f"ERROR: {e}"
     return h.hexdigest()

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MONICO · Android Terminal</title>
 <style>
   :root {
@@ -258,10 +258,12 @@ $("cmd").addEventListener("keydown", e => {
   if (e.key === "ArrowDown") { e.preventDefault();
     if (history.length) { hIdx = Math.min(history.length, hIdx + 1);
       box.value = hIdx < history.length ? history[hIdx] : ""; } return; }
-  if (e.key === "Tab") { e.preventDefault();
+  if (e.key === "Tab") {
+    if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
     const cur = box.value.toLowerCase();
-    const hit = COMMANDS.find(c => c.startsWith(cur) && c !== cur);
-    if (hit) box.value = hit;
+    if (!cur || COMMANDS.includes(cur)) return;
+    const hit = COMMANDS.find(c => c.startsWith(cur));
+    if (hit) { e.preventDefault(); box.value = hit; }
     return; }
   if (e.key !== "Enter") return;
   const val = box.value; box.value = "";

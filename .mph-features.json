@@ -1,0 +1,46 @@
+{
+  "features": [
+    {
+      "id": "ui.terminal-tab",
+      "kind": "ui",
+      "command": [
+        "node",
+        "--test",
+        "--test-name-pattern",
+        "^(?!viewport)",
+        "tests/tab-navigation.test.cjs"
+      ]
+    },
+    {
+      "id": "ui.viewport-zoom",
+      "kind": "ui",
+      "command": [
+        "node",
+        "--test",
+        "--test-name-pattern",
+        "viewport",
+        "tests/tab-navigation.test.cjs"
+      ]
+    },
+    {
+      "id": "backend.smoke",
+      "kind": "backend",
+      "command": [
+        "python",
+        "-m",
+        "unittest",
+        "tests.test_smoke"
+      ]
+    },
+    {
+      "id": "backend.commands",
+      "kind": "backend",
+      "command": [
+        "python",
+        "-m",
+        "unittest",
+        "tests.test_commands"
+      ]
+    }
+  ]
+}
